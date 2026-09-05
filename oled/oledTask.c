@@ -7,14 +7,15 @@
 #include "../tool/eventBus.h"
 #include "../net/netServer.h"
 #include "oledDisplay.h"
-//#include "../sense/sense_service.h"
+#include "oledKey.h"
+#include "../sense/sense_service.h"
 
-void Sense_Init(void);
+
 
 // ============ WiFi 和服务器配置 ============
-#define WIFI_SSID       "Shyi"
+#define WIFI_SSID       "SHYI"
 #define WIFI_PASSWORD   "QIQIQIQI"
-#define SERVER_IP       "你的腾讯云公网IP"
+#define SERVER_IP       "124.221.189.156"
 #define SERVER_PORT     8888
 
 // ============ 主任务栈与优先级（参照工程内样例） ============
@@ -29,7 +30,9 @@ static void System_Init(void) {
     Net_Init(WIFI_SSID, WIFI_PASSWORD, SERVER_IP, SERVER_PORT);
     // 3. Oled 显示
     Oled_Init();
-    // 4. 传感器
+    // 4. 翻页按键
+    OledKey_Init();
+    // 5. 传感器
     Sense_Init();
 }
 
@@ -41,6 +44,8 @@ static void MainTask(void *arg) {
     System_Init();
     // 主循环
     while (1) {
+        // 翻页按键：中断只置标志，任务上下文执行 nextPage/preferPage
+        OledKey_Scan();
         // 处理中断产生的事件（按键等）
         Event_ProcessPending();
         // 让出CPU，由操作系统调度其他任务

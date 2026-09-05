@@ -7,6 +7,9 @@
 #include "cmsis_os2.h"
 #include "wifi_device.h"
 #include "lwip/sockets.h"
+#include "lwip/errno.h"
+#include "lwip/netif.h"
+#include "lwip/dhcp.h"
 #include "lwip/netifapi.h"
 
 // ===== 静态变量（相当于私有成员） =====
@@ -16,6 +19,8 @@ static int g_is_connected = 0;       // 连接状态
 // ===== 内部函数：连接 WiFi =====
 static int ConnectWiFi(const char* ssid, const char* password) {
     WifiDeviceConfig config = {0};
+    int netId = -1;
+    int ret;
     strncpy(config.ssid, ssid, sizeof(config.ssid) - 1);
     strncpy(config.preSharedKey, password, sizeof(config.preSharedKey) - 1);
     config.securityType = WIFI_SEC_TYPE_PSK;
@@ -26,20 +31,37 @@ static int ConnectWiFi(const char* ssid, const char* password) {
         return -1;
     }
 
-    // 添加设备配置
-    if (AddDeviceConfig(&config, NULL) != WIFI_SUCCESS) {
-        printf("AddDeviceConfig 失败\n");
+    // 添加设备配置，netId 由接口返回，后续 ConnectTo 必须使用 netId
+    ret = AddDeviceConfig(&config, &netId);
+    if (ret != WIFI_SUCCESS) {
+        printf("AddDeviceConfig 失败, ret=%d, netId=%d\n", ret, netId);
         return -1;
     }
 
     // 连接 WiFi
-    if (ConnectTo(ssid) != WIFI_SUCCESS) {
-        printf("ConnectTo 失败\n");
+    if (ConnectTo(netId) != WIFI_SUCCESS) {
+        printf("ConnectTo 失败, netId=%d\n", netId);
         return -1;
     }
 
-    // 等待 IP 分配
-    osDelay(3000);
+    // 手动启动 DHCP 并等待拿到 IP（照官方 D2 demo：netif + dhcp_start + dhcp_is_bound）
+    struct netif *wlanNetif = netifapi_netif_find("wlan0");
+    int waitCount;
+    if (wlanNetif == NULL) {
+        printf("未找到 wlan0 网卡\n");
+        return -1;
+    }
+    dhcp_start(wlanNetif);
+    for (waitCount = 0; waitCount < 150; waitCount++) {
+        if (dhcp_is_bound(wlanNetif) == ERR_OK) {
+            break;
+        }
+        osDelay(10); // 约 100ms
+    }
+    if (dhcp_is_bound(wlanNetif) != ERR_OK) {
+        printf("等待 IP 超时\n");
+        return -1;
+    }
     printf("WiFi 连接成功\n");
     return 0;
 }
@@ -62,7 +84,7 @@ static int ConnectServer(const char* server_ip, int server_port) {
 
     // 连接服务器
     if (connect(g_sock_fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-        printf("connect 服务器失败\n");
+        printf("connect 服务器失败, errno=%d\n", errno);
         close(g_sock_fd);
         g_sock_fd = -1;
         return -1;

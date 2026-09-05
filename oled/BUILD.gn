@@ -1,18 +1,20 @@
 static_library("oled") {
-	sources = [
-		"oledDisplay.c",
-		"//third_party/ssd1306/ssd1306_fonts.c",
-		"hal_iot_gpio_ex.c",
-	]
+    sources = [
+        "oledDisplay.c",
+        "//third_party/ssd1306/ssd1306_fonts.c",
+        "hal_iot_gpio_ex.c",
+        "oledTask.c",
+        "oledKey.c",
+    ]
 
-	include_dirs = [
-		"./",
-		"../net",
-		"../tool",
-		"//third_party/ssd1306",
-		"//utils/native/lite/include",
-		"//kernel/liteos_m/kal/cmsis",
-		"//base/iot_hardware/peripheral/interfaces/kits",
-		"//device/hisilicon/hispark_pegasus/sdk_liteos/include",
-	]
+    include_dirs = [
+        "./",
+        "../net",
+        "../tool",
+        "//third_party/ssd1306",
+        "//utils/native/lite/include",
+        "//device/hisilicon/hispark_pegasus/hi3861_adapter/kal/cmsis",
+        "//base/iot_hardware/peripheral/interfaces/kits",
+        "//device/hisilicon/hispark_pegasus/sdk_liteos/include",
+    ]
 }

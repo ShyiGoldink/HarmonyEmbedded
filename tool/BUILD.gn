@@ -1,12 +1,10 @@
-static_library("net") {
+static_library("tool") {
     sources = [
-        "netServer.c",
-        "netCore.c",
+        "eventBus.c",
     ]
 
     include_dirs = [
         "//utils/native/lite/include",
         "//device/hisilicon/hispark_pegasus/hi3861_adapter/kal/cmsis",
-        "//foundation/communication/wifi_lite/interfaces/wifiservice",
     ]
 }

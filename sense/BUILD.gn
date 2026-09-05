@@ -1,0 +1,15 @@
+static_library("sense") {
+    sources = [
+        "aht20.c",
+        "sense_service.c",
+    ]
+
+    include_dirs = [
+        "./",
+        "../net",
+        "//base/iot_hardware/peripheral/interfaces/kits",
+        "//device/hisilicon/hispark_pegasus/sdk_liteos/include",
+        "//device/hisilicon/hispark_pegasus/hi3861_adapter/kal/cmsis",
+        "//utils/native/lite/include",
+    ]
+}

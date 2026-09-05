@@ -7,6 +7,7 @@
 #include "iot_i2c.h"
 #include "iot_gpio_ex.h"
 #include "netCore.h"
+#include "../tool/eventBus.h"
 #include "ssd1306_fonts.h"
 
 #define OLED_I2C_IDX 0
@@ -27,9 +28,11 @@ bool canChange = true;
 static uint8_t g_frame[OLED_WIDTH * OLED_PAGES];
 static float g_temperature[OLED_GRAPH_POINTS];
 static float g_humidity[OLED_GRAPH_POINTS];
-static float g_time[OLED_GRAPH_POINTS];
+static long long g_time[OLED_GRAPH_POINTS];
 static netData g_currentData;
 static unsigned int g_dataCount;
+
+static void OledOnNetDataReady(EventType type, void* arg);
 
 static uint32_t OledWrite(uint8_t control, const uint8_t *data, size_t length)
 {
@@ -204,12 +207,42 @@ static void OledDrawGraph(const char *title)
     OledText(20, 7, "T:solid H:dash");
 }
 
+static void OledFormatTimeMs(long long timeMs, char* dateText, size_t dateSize, char* clockText, size_t clockSize)
+{
+    long long beijingMs = timeMs + 8LL * 3600LL * 1000LL;
+    long long days = beijingMs / 86400000LL;
+    long long daySeconds = (beijingMs % 86400000LL) / 1000LL;
+    long long z = days + 719468LL;
+    long long era = z / 146097LL;
+    long long doe = z - era * 146097LL;
+    long long yoe = (doe - doe / 1460LL + doe / 36524LL - doe / 146096LL) / 365LL;
+    long long year = yoe + era * 400LL;
+    long long doy = doe - (365LL * yoe + yoe / 4LL - yoe / 100LL);
+    long long mp = (5LL * doy + 2LL) / 153LL;
+    long long day = doy - (153LL * mp + 2LL) / 5LL + 1LL;
+    long long month = mp + (mp < 10LL ? 3LL : -9LL);
+    long long hour = daySeconds / 3600LL;
+    long long minute = (daySeconds % 3600LL) / 60LL;
+    long long second = daySeconds % 60LL;
+    if (month <= 2LL) {
+        year += 1LL;
+    }
+    (void)snprintf(dateText, dateSize, "%04lld-%02lld-%02lld", year, month, day);
+    (void)snprintf(clockText, clockSize, "%02lld:%02lld:%02lld", hour, minute, second);
+}
+
 static void OledDrawInitial(void)
 {
-    char timeText[24];
+    char dateText[16];
+    char clockText[16];
     OledDrawTitle("TEMP/HUMI MONITOR");
-    (void)snprintf(timeText, sizeof(timeText), "TIME %lld", g_currentData.time);
-    OledText(0, 3, timeText);
+    if (g_currentData.time > 0) {
+        OledFormatTimeMs(g_currentData.time, dateText, sizeof(dateText), clockText, sizeof(clockText));
+        OledText(0, 2, dateText);
+        OledText(0, 3, clockText);
+    } else {
+        OledText(0, 3, "NO TIME");
+    }
     OledText(0, 5, "LEFT/RIGHT: PAGE");
 }
 
@@ -255,6 +288,7 @@ void Oled_Init(void)
     }
     OledClear();
     OledDrawCurrentPage();
+    Event_Subscribe(EVENT_NET_DATA_READY, OledOnNetDataReady);
     canChange = false;
     getTime();
 }
@@ -303,7 +337,7 @@ void freshPage(netData data)
     for (i = 0; i < g_dataCount; i++) {
         g_temperature[i] = data.tempData == NULL ? 0.0f : data.tempData[i];
         g_humidity[i] = data.humiData == NULL ? 0.0f : data.humiData[i];
-        g_time[i] = data.timer == NULL ? (float)i : data.timer[i];
+        g_time[i] = data.timer == NULL ? (long long)i : data.timer[i];
     }
     g_currentData.tempData = g_temperature;
     g_currentData.humiData = g_humidity;
@@ -311,6 +345,17 @@ void freshPage(netData data)
     g_currentData.count = g_dataCount;
     OledDrawCurrentPage();
     canChange = true;
+}
+
+static void OledOnNetDataReady(EventType type, void* arg)
+{
+    netData* data;
+    (void)type;
+    if (arg == NULL) {
+        return;
+    }
+    data = (netData*)arg;
+    freshPage(*data);
 }
 
 netData currentNetData(void)
