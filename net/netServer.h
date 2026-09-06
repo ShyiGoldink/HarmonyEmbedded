@@ -22,6 +22,10 @@ int Net_Recv(char* buffer, size_t buf_size);
 // ---------- 关闭连接 ----------
 void Net_Close(void);
 
+// ---------- 接收超时 ----------
+// 设置 recv 阻塞超时（秒），0 表示一直阻塞
+int Net_SetRecvTimeout(int seconds);
+
 // ---------- 状态查询 ----------
 int Net_IsConnected(void);
 

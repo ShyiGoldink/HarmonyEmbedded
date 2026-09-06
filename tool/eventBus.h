@@ -6,7 +6,8 @@
 // ============ 事件类型枚举 ============
 typedef enum {
     
-    EVENT_NET_DATA_READY,        // 网络时间/表格数据已处理完成，arg 指向 netData
+    EVENT_NET_TIME_READY,        // 服务器时间已处理完成，arg 指向 netData
+    EVENT_NET_TABLE_READY,       // 表格数据已处理完成，arg 指向 netData
     EVENT_COUNT                 // 事件总数（用于数组大小）
 } EventType;
 

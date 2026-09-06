@@ -17,10 +17,14 @@ static int g_sock_fd = -1;           // Socket 文件描述符
 static int g_is_connected = 0;       // 连接状态
 
 // ===== 内部函数：连接 WiFi =====
-static int ConnectWiFi(const char* ssid, const char* password) {
+static int ConnectWiFi(const char* ssid, const char* password)
+{
     WifiDeviceConfig config = {0};
     int netId = -1;
     int ret;
+    struct netif *wlanNetif = NULL;
+    int waitCount;
+
     strncpy(config.ssid, ssid, sizeof(config.ssid) - 1);
     strncpy(config.preSharedKey, password, sizeof(config.preSharedKey) - 1);
     config.securityType = WIFI_SEC_TYPE_PSK;
@@ -31,7 +35,7 @@ static int ConnectWiFi(const char* ssid, const char* password) {
         return -1;
     }
 
-    // 添加设备配置，netId 由接口返回，后续 ConnectTo 必须使用 netId
+    // 添加设备配置，netId 由接口返回，ConnectTo 必须使用 netId
     ret = AddDeviceConfig(&config, &netId);
     if (ret != WIFI_SUCCESS) {
         printf("AddDeviceConfig 失败, ret=%d, netId=%d\n", ret, netId);
@@ -44,9 +48,8 @@ static int ConnectWiFi(const char* ssid, const char* password) {
         return -1;
     }
 
-    // 手动启动 DHCP 并等待拿到 IP（照官方 D2 demo：netif + dhcp_start + dhcp_is_bound）
-    struct netif *wlanNetif = netifapi_netif_find("wlan0");
-    int waitCount;
+    // 手动启动 DHCP 并等待拿到 IP（照官方 D2 demo）
+    wlanNetif = netifapi_netif_find("wlan0");
     if (wlanNetif == NULL) {
         printf("未找到 wlan0 网卡\n");
         return -1;
@@ -67,7 +70,10 @@ static int ConnectWiFi(const char* ssid, const char* password) {
 }
 
 // ===== 内部函数：连接服务器 =====
-static int ConnectServer(const char* server_ip, int server_port) {
+static int ConnectServer(const char* server_ip, int server_port)
+{
+    struct sockaddr_in server_addr;
+
     // 创建 Socket
     g_sock_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (g_sock_fd < 0) {
@@ -76,10 +82,9 @@ static int ConnectServer(const char* server_ip, int server_port) {
     }
 
     // 配置服务器地址
-    struct sockaddr_in server_addr;
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(server_port);
+    server_addr.sin_port = htons((unsigned short)server_port);
     server_addr.sin_addr.s_addr = inet_addr(server_ip);
 
     // 连接服务器
@@ -96,7 +101,8 @@ static int ConnectServer(const char* server_ip, int server_port) {
 
 // ===== 对外接口实现 =====
 
-int Net_Init(const char* ssid, const char* password, const char* server_ip, int server_port) {
+int Net_Init(const char* ssid, const char* password, const char* server_ip, int server_port)
+{
     // 1. 连接 WiFi
     if (ConnectWiFi(ssid, password) != 0) {
         return -1;
@@ -108,24 +114,28 @@ int Net_Init(const char* ssid, const char* password, const char* server_ip, int 
     }
 
     g_is_connected = 1;
+
     return 0;
 }
 
-int Net_Send(const char* data, size_t len) {
+int Net_Send(const char* data, size_t len)
+{
     if (!g_is_connected || g_sock_fd < 0) {
         return -1;
     }
     return send(g_sock_fd, data, len, 0);
 }
 
-int Net_Recv(char* buffer, size_t buf_size) {
+int Net_Recv(char* buffer, size_t buf_size)
+{
     if (!g_is_connected || g_sock_fd < 0) {
         return -1;
     }
     return recv(g_sock_fd, buffer, buf_size, 0);
 }
 
-void Net_Close(void) {
+void Net_Close(void)
+{
     if (g_sock_fd >= 0) {
         close(g_sock_fd);
         g_sock_fd = -1;
@@ -134,6 +144,19 @@ void Net_Close(void) {
     printf("网络已关闭\n");
 }
 
-int Net_IsConnected(void) {
+int Net_SetRecvTimeout(int seconds)
+{
+    struct timeval timeout;
+
+    if (g_sock_fd < 0) {
+        return -1;
+    }
+    timeout.tv_sec = seconds;
+    timeout.tv_usec = 0;
+    return setsockopt(g_sock_fd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
+}
+
+int Net_IsConnected(void)
+{
     return g_is_connected;
 }

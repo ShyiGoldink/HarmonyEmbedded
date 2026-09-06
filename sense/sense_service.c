@@ -48,6 +48,9 @@ static void SenseTask(void *arg)
                 printf("[Sense] Temp=%.2f Humi=%.2f\r\n", temp, humi);
                 if (Send_Sense_Data(temp, humi) != 0) {
                     printf("[Sense] upload failed\r\n");
+                } else {
+                    // 每次上传成功后顺带拉一次服务器时间，初始页时间保持刷新
+                    (void)getTime();
                 }
             }
         }

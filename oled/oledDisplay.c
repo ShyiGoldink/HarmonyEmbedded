@@ -32,7 +32,8 @@ static long long g_time[OLED_GRAPH_POINTS];
 static netData g_currentData;
 static unsigned int g_dataCount;
 
-static void OledOnNetDataReady(EventType type, void* arg);
+static void OledOnTimeReady(EventType type, void* arg);
+static void OledOnTableReady(EventType type, void* arg);
 
 static uint32_t OledWrite(uint8_t control, const uint8_t *data, size_t length)
 {
@@ -288,21 +289,30 @@ void Oled_Init(void)
     }
     OledClear();
     OledDrawCurrentPage();
-    Event_Subscribe(EVENT_NET_DATA_READY, OledOnNetDataReady);
+    Event_Subscribe(EVENT_NET_TIME_READY, OledOnTimeReady);
+    Event_Subscribe(EVENT_NET_TABLE_READY, OledOnTableReady);
     canChange = false;
     getTime();
 }
 
 void nextPage(void)
 {
-    if (!canChange) return;
+    if (!canChange) {
+        printf("[oled] nextPage blocked, canChange=0\n");
+        return;
+    }
+    printf("[oled] nextPage -> page %d\n", (int)currentPage);
     currentPage = currentPage == INITIAL_PAGE ? DATA_BY_DAY : (page)(currentPage - 1);
     changePage();
 }
 
 void preferPage(void)
 {
-    if (!canChange) return;
+    if (!canChange) {
+        printf("[oled] preferPage blocked, canChange=0\n");
+        return;
+    }
+    printf("[oled] preferPage -> page %d\n", (int)currentPage);
     currentPage = currentPage == DATA_BY_DAY ? INITIAL_PAGE : (page)(currentPage + 1);
     changePage();
 }
@@ -347,7 +357,7 @@ void freshPage(netData data)
     canChange = true;
 }
 
-static void OledOnNetDataReady(EventType type, void* arg)
+static void OledOnTimeReady(EventType type, void* arg)
 {
     netData* data;
     (void)type;
@@ -355,6 +365,24 @@ static void OledOnNetDataReady(EventType type, void* arg)
         return;
     }
     data = (netData*)arg;
+    g_currentData.time = data->time;
+    if (currentPage == INITIAL_PAGE) {
+        freshPage(*data);
+    }
+}
+
+static void OledOnTableReady(EventType type, void* arg)
+{
+    netData* data;
+    (void)type;
+    if (arg == NULL) {
+        return;
+    }
+    data = (netData*)arg;
+    printf("[oled] table event count=%u page=%d\n", data->count, (int)currentPage);
+    if (currentPage == INITIAL_PAGE) {
+        return;
+    }
     freshPage(*data);
 }
 

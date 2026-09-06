@@ -49,7 +49,7 @@ static void MainTask(void *arg) {
         // 处理中断产生的事件（按键等）
         Event_ProcessPending();
         // 让出CPU，由操作系统调度其他任务
-        osDelay(10);
+        osDelay(2); // 约20ms，保证按键轮询与事件处理更及时
     }
 }
 

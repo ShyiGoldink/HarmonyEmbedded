@@ -8,6 +8,7 @@
 #include "cmsis_os2.h"
 #include "../tool/netData.h"
 #include "../tool/eventBus.h"
+#include "lwip/errno.h"
 
 // 服务端协议（TCP 长连接，文本行，\n 结尾）：
 //   上传:      SEND_SENSE_DATA/temp,humidity\n
@@ -111,22 +112,38 @@ static int NetCore_RecvLine(char* line, size_t lineSize)
         }
         if (g_rxEnd < NETCORE_LINE_BUF_SIZE) {
             int received = Net_Recv(g_rxBuf + g_rxEnd, NETCORE_LINE_BUF_SIZE - g_rxEnd);
-            if (received <= 0) {
-                return -1;
-            }
-            g_rxEnd += (size_t)received;
+        printf("[net] recv ret=%d errno=%d\n", received, errno);
+        if (received <= 0) {
+            return -1;
+        }
+        g_rxEnd += (size_t)received;
         }
     }
 }
 
-static void NetCore_PublishEmpty(void)
+static int NetCore_ReadExpectedLine(char* line, size_t lineSize, const char* prefix, int maxTries)
+{
+    int tryCount;
+    for (tryCount = 0; tryCount < maxTries; tryCount++) {
+        if (NetCore_RecvLine(line, lineSize) != 0) {
+            return -1;
+        }
+        if (strncmp(line, prefix, strlen(prefix)) == 0) {
+            return 0;
+        }
+        printf("[net] skip unexpected line: %s\n", line);
+    }
+    return -1;
+}
+
+static void NetCore_PublishEmpty(EventType type)
 {
     g_netData.time = 0;
     g_netData.count = 0;
     g_netData.tempData = NULL;
     g_netData.humiData = NULL;
     g_netData.timer = NULL;
-    Event_Publish(EVENT_NET_DATA_READY, &g_netData);
+    Event_Publish(type, &g_netData);
 }
 
 static void NetCore_PublishTime(long long timeMs)
@@ -136,7 +153,7 @@ static void NetCore_PublishTime(long long timeMs)
     g_netData.tempData = NULL;
     g_netData.humiData = NULL;
     g_netData.timer = NULL;
-    Event_Publish(EVENT_NET_DATA_READY, &g_netData);
+    Event_Publish(EVENT_NET_TIME_READY, &g_netData);
 }
 
 static int NetCore_ParseFloatArray(const char** cursor, float* output)
@@ -212,12 +229,11 @@ static void NetCore_RequestTable(const char* request, long long stepMs)
         return;
     }
     if (NetCore_SendAll(request) != 0) {
-        goto finish;
+            printf("[net] table send failed\n");
+            goto finish;
     }
-    if (NetCore_RecvLine(line, sizeof(line)) != 0) {
-        goto finish;
-    }
-    if (strncmp(line, NETCORE_RSP_TABLE, strlen(NETCORE_RSP_TABLE)) != 0) {
+    printf("[net] table request sent\n");
+    if (NetCore_ReadExpectedLine(line, sizeof(line), NETCORE_RSP_TABLE, 3) != 0) {
         goto finish;
     }
     payload = line + strlen(NETCORE_RSP_TABLE);
@@ -230,15 +246,17 @@ static void NetCore_RequestTable(const char* request, long long stepMs)
     if (NetCore_ParseStartMs(&payload, &startMs) != 0) {
         goto finish;
     }
+    printf("[net] table rsp ok: %s\n", line);
     NetCore_FillTableData(startMs, stepMs);
     success = 0;
 
 finish:
     if (success == 0) {
-        Event_Publish(EVENT_NET_DATA_READY, &g_netData);
+        Event_Publish(EVENT_NET_TABLE_READY, &g_netData);
     } else {
         // 简单版：失败也发空数据，方便 OLED 退出“等待刷新”状态。
-        NetCore_PublishEmpty();
+        printf("[net] table request/parse failed\n");
+        NetCore_PublishEmpty(EVENT_NET_TABLE_READY);
     }
     CoreUnlock();
 }
@@ -270,15 +288,14 @@ long long getTime(void)
         return -1;
     }
     if (NetCore_SendAll("GET_TIME/\n") == 0 &&
-        NetCore_RecvLine(line, sizeof(line)) == 0 &&
-        strncmp(line, NETCORE_RSP_TIME, strlen(NETCORE_RSP_TIME)) == 0) {
+        NetCore_ReadExpectedLine(line, sizeof(line), NETCORE_RSP_TIME, 3) == 0) {
         timeMs = strtoll(line + strlen(NETCORE_RSP_TIME), NULL, 10);
         success = 0;
     }
     if (success == 0) {
         NetCore_PublishTime(timeMs);
     } else {
-        NetCore_PublishEmpty();
+        NetCore_PublishEmpty(EVENT_NET_TIME_READY);
     }
     CoreUnlock();
     return timeMs;
@@ -286,15 +303,18 @@ long long getTime(void)
 
 void getDataMinute(void)
 {
+    printf("[net] getDataMinute begin\n");
     NetCore_RequestTable("GET_DATA_MINUTE/\n", NETCORE_STEP_MINUTE_MS);
 }
 
 void getDataHour(void)
 {
+    printf("[net] getDataHour begin\n");
     NetCore_RequestTable("GET_DATA_HOUR/\n", NETCORE_STEP_HOUR_MS);
 }
 
 void getDataDay(void)
 {
+    printf("[net] getDataDay begin\n");
     NetCore_RequestTable("GET_DATA_DAY/\n", NETCORE_STEP_DAY_MS);
 }
